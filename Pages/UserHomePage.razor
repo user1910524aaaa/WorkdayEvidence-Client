@@ -1,0 +1,79 @@
+@page "/homepage"
+
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Net.Http.Headers
+@using Microsoft.AspNetCore.Http
+@using Microsoft.Extensions.Caching.Memory
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
+
+@inject IMemoryCache _cache
+@inject NavigationManager _navigationManager
+@inject AuthenticationStateProvider _authStateProvider
+@inject IServiceProvider _serviceProvider
+@inject IHttpClientFactory _http
+@inject IHttpContextAccessor _httpContextAccessor
+@inject IAuthorizationHandlerService _authInterceptor
+
+@using Client.Models
+@using Client.Services
+
+@attribute [Authorize]
+
+<div>
+    <h4 class="font-weight-bold">Salut, @_user.firstName</h4>
+    <h6>Preume: @_user.firstName</h6>
+    <h6>Nume: @_user.lastName</h6>
+    <h6>Rol: @_user.role</h6>
+</div>
+
+@code {
+
+    private static UserModel _user;
+
+    protected UserModel _claims;
+    protected String _token;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await _authInterceptor.Redirect();
+        _token = _cache.Get<String>("token");
+
+        _user = new UserModel();
+
+        await this.GetUserProfileAsync(_token);
+        await base.OnInitializedAsync();
+    }
+
+    public async Task<AuthenticationServerResponseModel> GetUserProfileAsync(String Token)
+    {
+        await _authInterceptor.Redirect();
+
+        try
+        {
+            AuthenticationServerResponseModel res = new AuthenticationServerResponseModel();
+
+            var request = new HttpRequestMessage(HttpMethod.Get, "new/api/user");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+
+            var client = _http.CreateClient("Resources");
+            var httpResponse = await client.SendAsync(request);
+
+            res = await httpResponse.Content.ReadFromJsonAsync<AuthenticationServerResponseModel>();
+
+            _user = res.data[0];
+
+            return res;
+        }
+
+        catch(Exception e)
+        {
+            Console.WriteLine(e.Message);
+            return null;
+        }
+
+
+    }
+
+}

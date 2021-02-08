@@ -1,0 +1,10 @@
+@inject NavigationManager NavigationManager
+
+@code {
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Delay(1000).ConfigureAwait(false);
+        NavigationManager.NavigateTo("login");
+    }
+}

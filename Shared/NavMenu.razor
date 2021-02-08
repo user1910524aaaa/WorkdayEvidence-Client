@@ -1,0 +1,51 @@
+﻿<div class="top-row pl-4 navbar navbar-dark">
+    <a class="navbar-brand" href="homepage">WorkdayEvidence</a>
+    <button class="navbar-toggler" @onclick="ToggleNavMenu">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+</div>
+
+<div class="@NavMenuCssClass" @onclick="ToggleNavMenu">
+    <ul class="nav flex-column">
+        <li class="nav-item px-3">
+            <NavLink class="nav-link" href="homepage" Match="NavLinkMatch.All">
+                <span class="oi oi-home" aria-hidden="true"></span> Acasa
+            </NavLink>
+        </li>
+        <li class="nav-item px-3">
+            <NavLink class="nav-link" href="signWorktime">
+                <span class="oi oi-clock" aria-hidden="true"></span> Ponteaza-te
+            </NavLink>
+        </li>
+        <li class="nav-item px-3">
+            <NavLink class="nav-link" href="settings/changePassword">
+                <span class="fa fa-wrench" aria-hidden="true"></span> Setari Cont
+            </NavLink>
+        </li>
+        <AuthorizeView Policy="AdminRolePolicy">
+            <li class="nav-item px-3">
+                <NavLink class="nav-link" href="registerUser">
+                    <span class="oi oi-plus" aria-hidden="true"></span> Adauga Utilizator
+                </NavLink>
+            </li>
+            <li class="nav-item px-3">
+                <NavLink class="nav-link" href="user/admin">
+                    <span class="oi oi-list" aria-hidden="true"></span> Vezi Pontaje Utilizator
+                </NavLink>
+            </li>
+        </AuthorizeView>
+
+
+    </ul>
+</div>
+
+@code {
+    private bool collapseNavMenu = true;
+
+    private string NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+}

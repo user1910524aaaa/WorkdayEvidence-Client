@@ -1,0 +1,175 @@
+﻿@inject HttpClientExtensions _httpCExt
+@inject NavigationManager _navManager
+@inject IAuthorizationHandlerService _authInterceptor
+
+
+<EditForm Model="@_clockInClockOutFlxTSignature" Context="formContext" class="d-flex justify-content-end align-items-center custom-width">
+    @if (_buttonText == "disabled")
+    {
+        <button class="btn btn-primary btn-sm inOut-custom-width" disabled>Start</button>
+    }
+
+    else
+    {
+        @if (_buttonText == "Pauza" || _buttonText == "Termina")
+        {
+            <input type="checkbox" id="finish" class="mr-1" value="@_clockInClockOutFlxTSignature.finish" @onchange="finishCheckboxBoundedValue">
+            <label for="finish" class="m-0 mr-1">Termina</label>
+            <button class="d-sm-block btn btn-primary btn-sm inOut-custom-width" @onclick="@(() => clockInClockOutFlxTSignature())">@_buttonText</button>
+        }
+
+        else
+        {
+            <button class="btn btn-primary btn-sm inOut-custom-width" @onclick="@(() => clockInClockOutFlxTSignature())">@_buttonText</button>
+        }
+    }
+</EditForm>
+
+@attribute [Authorize]
+
+@code {
+
+    [CascadingParameter] private Task<AuthenticationState> authenticationStateTask { get; set; }
+
+    private string _buttonText;
+    private string _buttonState;
+
+    ClockInClockOutFlxTSignature _clockInClockOutFlxTSignature = new ClockInClockOutFlxTSignature();
+
+    protected async override Task OnInitializedAsync()
+    {
+        await _authInterceptor.Redirect();
+        await this.ClockInClockOutState();
+    }
+
+    private void finishCheckboxBoundedValue(ChangeEventArgs e)
+    {
+        _clockInClockOutFlxTSignature.finish = Convert.ToBoolean(e.Value.ToString());
+        if (_buttonState == "IP" && _clockInClockOutFlxTSignature.finish == true)
+        {
+            _buttonText = "Termina";
+        }
+
+        else if(_buttonState == "IP" && _clockInClockOutFlxTSignature.finish == false)
+        {
+            _buttonText = "Pauza";
+        }
+
+        else
+        {
+            _buttonText = "Start";
+        }
+    }
+
+    private async Task<ResponseModel> ClockInClockOutState()
+    {
+        await _authInterceptor.Redirect();
+
+        try
+        {
+            ResponseModel res = new ResponseModel();
+            res = await _httpCExt.GetAsync<ResponseModel>("new/api/user/clockIn/flxTSignature/state");
+
+            if (res.statusCode == 200 && res.data.ToString() == "OK")
+            {
+                _buttonText = "Start";
+                _buttonState = res.data.ToString();
+                return res;
+            }
+
+            else if (res.statusCode == 423 && res.data.ToString() == "TT")
+            {
+                _buttonText = "disabled";
+                _buttonState = res.data.ToString();
+                return res;
+            }
+
+            else if (res.statusCode == 423 && res.data.ToString() == "IP")
+            {
+                _buttonText = "Pauza";
+                _buttonState = res.data.ToString();
+                return res;
+            }
+
+            else
+            {
+                _buttonText = "Termina";
+                _buttonState = res.data.ToString();
+                return res;
+            }
+        }
+
+        catch(Exception e)
+        {
+            Console.WriteLine(e.Message);
+            return null;
+        }
+    }
+
+    private async Task<ResponseModel> clockInClockOutFlxTSignature()
+    {
+        await _authInterceptor.Redirect();
+
+        try
+        {
+            ResponseModel res = new ResponseModel();
+            if (_buttonState == "OK")
+            {
+                res = await _httpCExt.PostAsync<ResponseModel>("new/api/user/clockIn/flxTSignature", _clockInClockOutFlxTSignature);
+                await this.ClockInClockOutState();
+                if (res.statusCode == 200)
+                {
+                    return res;
+                }
+
+                else
+                {
+                    return res;
+                }
+            }
+
+            else if (_buttonState == "IP" && _clockInClockOutFlxTSignature.finish == false)
+            {
+                res = await _httpCExt.PostAsync<ResponseModel>("new/api/user/clockOut", _clockInClockOutFlxTSignature);
+                await this.ClockInClockOutState();
+                if (res.statusCode == 200)
+                {
+                    return res;
+                }
+
+                else
+                {
+                    return res;
+                }
+            }
+
+            else if (_buttonState == "IP" && _clockInClockOutFlxTSignature.finish == true)
+            {
+                res = await _httpCExt.PostAsync<ResponseModel>("new/api/user/clockOut", _clockInClockOutFlxTSignature);
+                await this.ClockInClockOutState();
+
+                if (res.statusCode == 200)
+                {
+                    return res;
+                }
+
+                else
+                {
+                    return res;
+                }
+            }
+
+            else
+            {
+                await this.ClockInClockOutState();
+                return res;
+            }
+        }
+
+        catch(Exception e)
+        {
+            Console.WriteLine(e.Message);
+            return null;
+        }
+    }
+}

@@ -1,0 +1,103 @@
+﻿@page "/user/admin"
+
+@inject HttpClientExtensions _httpCExt
+@inject NavigationManager _navManager
+@inject IToastService _toaster
+@inject IAuthorizationHandlerService _authInterceptor
+
+@attribute [Authorize(Policy = "AdminRolePolicy")]
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th style="vertical-align: middle" scope="col">Nume</th>
+            <th style="vertical-align: middle" scope="col">Prenume</th>
+            <th style="vertical-align: middle" scope="col">Username</th>
+            <th style="vertical-align: middle" scope="col">Rol</th>
+            <th style="vertical-align: middle" scope="col">Sterge</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (_users != null)
+        {
+            @foreach (var item in _users)
+            {
+        <tr>
+            <td style="vertical-align: middle">@item.lastName</td>
+            <td style="vertical-align: middle">@item.firstName</td>
+            <td style="vertical-align: middle" scope="col"><a href="user/admin/users/@item.id">@item.userName</a></td>
+            <td style="vertical-align: middle">@item.role</td>
+            <td style="vertical-align: middle">
+                <button class="btn btn-outline-primary btn-sm" @onclick="@(() => DeleteUserAsync(item.id, item))">
+                    <span class="fa fa-trash"></span>
+                </button>
+            </td>
+        </tr>
+            }
+        }
+
+    </tbody>
+</table>
+
+@code {
+
+    private List<UserModel> _users = new List<UserModel>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await _authInterceptor.Redirect();
+        await GetUsersAsync();
+    }
+
+    private async Task<GetUsersResponse> GetUsersAsync()
+    {
+        await _authInterceptor.Redirect();
+
+        try
+        {
+            GetUsersResponse res = new GetUsersResponse();
+
+            res = await _httpCExt.GetAsync<GetUsersResponse>("new/api/user/admin/users");
+
+            if (res.statusCode == 200)
+            {
+                foreach (UserModel user in res.data)
+                {
+                    _users.Add(user);
+                }
+
+                return res;
+            }
+
+            else
+            {
+                return res;
+            }
+        }
+
+        catch(Exception e)
+        {
+            Console.WriteLine(e.Message);
+            return null;
+        }
+    }
+
+    private async Task<ResponseModel> DeleteUserAsync(int id, UserModel body)
+    {
+        await _authInterceptor.Redirect();
+        ResponseModel res = new ResponseModel();
+
+        res = await _httpCExt.DeleteAsync<ResponseModel>(@$"new/api/user/admin/delete/uid={id}", body);
+
+        if(res.statusCode == 200)
+        {
+            _toaster.ShowSuccess("Modificarea s-a efectuat cu succes.", "Succes");
+            return res;
+        }
+
+        else
+        {
+            return res;
+        }
+    }
+}

@@ -1,0 +1,531 @@
+﻿@page "/signWorktime"
+
+@inject NavigationManager _navigationManager
+@inject IServiceProvider _serviceProvider
+@inject HttpClientExtensions _httpCExt
+@inject IToastService _toastService
+@inject IAuthorizationHandlerService _authInterceptor
+
+@attribute [Authorize]
+<div class="d-flex m-auto align-items-baseline">
+    <EditForm Model="@_monthOfYear" class="justify-content-start mr-3">
+        <select class="form-control form-control-sm control-md" value="" @onchange="returnMonthOfYearIdAsString">
+            <option value="" disabled>Alege luna</option>
+            @foreach (var item in Months)
+            {
+                <option value="@item.id">@item.value</option>
+            };
+        </select>
+    </EditForm>
+    <ClockInClockOutComponent></ClockInClockOutComponent>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th scope="col">#</th>
+            <th scope="col">Ziua</th>
+            <th scope="col" style="text-align: center">Prezent</th>
+            <th scope="col" style="text-align: center">Total Minute</th>
+            <th scope="col" class="table-cell">Ponteaza/Modifica/Sterge</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (_monthOfYear.id != null)
+        {
+            @foreach (var item in CalendarTable(_monthOfYear.id, _workdays))
+            {
+                <tr>
+                    <th scope="col" style="vertical-align: middle">@item.DayNo</th>
+                    <td style="vertical-align: middle">@item.DayName</td>
+                    <td style="vertical-align: middle; text-align:center">
+                        @if (item.ClockedIn == true)
+                        {
+                            <span>da</span>
+                        }
+                        else
+                        {
+                            <span>nu</span>
+                        }
+                    </td>
+                    <td style="vertical-align: middle; text-align:center">
+
+                        @if (item.ClockedIn == true)
+                        {
+                            <span>@item.AmountOfMinutes min</span>
+                        }
+                        else
+                        {
+                            <span>-</span>
+                        }
+                    </td>
+                    <td style="vertical-align: middle">
+                        @if (item.ClockedIn == false)
+                        {
+                            <EditForm Model="@_clockInFixTSignature" Context="signContext">
+                                <DataAnnotationsValidator />
+                                @*<ValidationSummary />*@
+                                <div class="d-flex align-items-center">
+                                    <input type="time" class="form-control form-control-sm control-sm" required @onchange="returnStartDate">
+                                    <input type="time" class="form-control form-control-sm control-sm" required @onchange="returnEndDate">
+                                    <select class="form-control form-control-sm control-md" value="" @onchange="returnWorkdayTypeAsString">
+                                        <option value="" disabled>Tipul de prezenta</option>
+                                        @foreach (var wd_type in _wd_typeModel)
+                                        {
+                                            <option value="@wd_type.code">@wd_type.code</option>
+                                        }
+
+                                    </select>
+                                    <input type="checkbox" id="fullDay" class="m-1" value="_clockInFixTSignature.fullDay" @onchange="returnFullDay">
+                                    <label for="fullDay" class="m-1 label-fullday">Zi intreaga</label>
+                                    <div class="d-flex m-auto justify-content-end container-controls">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm m-1" @onclick="@(() => PostWorkdayAsync(signContext, _clockInFixTSignature, item.DayNo))" @onclick:preventDefault><span class="fa fa-save"></span></button>
+                                    </div>
+                                </div>
+                            </EditForm>
+                        }
+
+                        else
+                        {
+                            <EditForm Model="@_clockInFixTSignature" Context="updateContext">
+                                <DataAnnotationsValidator />
+                                @*<ValidationSummary />*@
+                                <div class="d-flex align-items-center">
+                                    <input type="time" class="form-control form-control-sm control-size" value="@item.ClockedInStartDate.Value.TimeOfDay" @onchange="returnStartDate">
+                                    <input type="time" class="form-control form-control-sm control-size" value="@item.ClockedInEndDate.Value.TimeOfDay" @onchange="returnEndDate">
+                                    <select class="form-control form-control-sm control-size" value="" @onchange="returnWorkdayTypeAsString">
+                                        <option value="" disabled>@item.WorkdayType</option>
+                                        @foreach (var wd_type in _wd_typeModel)
+                                        {
+                                            <option value="@wd_type.code">@wd_type.code</option>
+                                        }
+
+                                    </select>
+                                    <div class="d-flex m-auto justify-content-end container-controls">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm m-1" @onclick="@(() => UpdateWorkdayAsync(updateContext, _clockInFixTSignature, item.DayNo, item.Id))" @onclick:preventDefault><span class="fa fa-edit"></span></button>
+                                        <EditForm Model="@_deleteFixTSignature" Context="deleteContext">
+                                            <DataAnnotationsValidator />
+                                            <button type="button" class="btn btn-outline-primary btn-sm m-1" @onclick="@(() => DeleteWorkdayAsync(deleteContext, _deleteFixTSignature, item.Id))" @onclick:preventDefault><span class="fa fa-trash"></span></button>
+                                        </EditForm>
+                                    </div>
+                                </div>
+                            </EditForm>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+
+    </tbody>
+</table>
+
+@code {
+
+    private List<DateTime> DaysInMonth = new List<DateTime>();
+    private List<MonthOfYear> Months = new List<MonthOfYear>();
+    private List<int> Years = new List<int>();
+
+    private MonthOfYear _monthOfYear = new MonthOfYear();
+    private List<TypeModel> _wd_typeModel = new List<TypeModel>();
+    private ClockInFixTSignatureModel _clockInFixTSignature = new ClockInFixTSignatureModel();
+    private DeleteFixTSignatureModel _deleteFixTSignature = new DeleteFixTSignatureModel();
+    private List<WorkdayModel> _workdays = new List<WorkdayModel>();
+
+    private DateTime sendStartDate = new DateTime();
+    private DateTime sendEndDate = new DateTime();
+
+    @*private string _endDateState = "enabled";*@
+
+    private int _day = new DateTime().Day;
+
+    protected override void OnInitialized()
+    {
+        Months = GetMonths();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await _authInterceptor.Redirect();
+
+        await GetWorkdayTypeAsync();
+        await GetWorkdaysAsync();
+    }
+
+    @*public static List<int> GetYears()
+        {
+            List<int> years = new List<int>();
+            for (var year = 2015; year <= DateTime.Now.Year; year++)
+            {
+                years.Add(year);
+            }
+
+            return years;
+        }*@
+private void returnFullDay(ChangeEventArgs e)
+{
+    _clockInFixTSignature.fullDay = Convert.ToBoolean(e.Value.ToString());
+}
+private void returnStartDate(ChangeEventArgs e)
+{
+    sendStartDate = Convert.ToDateTime(e.Value.ToString());
+}
+private void returnEndDate(ChangeEventArgs e)
+{
+    sendEndDate = Convert.ToDateTime(e.Value.ToString());
+}
+private void returnMonthOfYearIdAsString(ChangeEventArgs e)
+{
+    _monthOfYear.id = e.Value.ToString();
+}
+private void returnWorkdayTypeAsString(ChangeEventArgs e)
+{
+    _clockInFixTSignature.wd_typeCode = e.Value.ToString();
+}
+
+private static List<DateTime> GetDates(int year, int month)
+{
+    var dates = new List<DateTime>();
+
+    // Loop from the first day of the month until we hit the next month, moving forward a day at a time
+    for (var date = new DateTime(year, month, 1); date.Month == month; date = date.AddDays(1))
+    {
+        dates.Add(date);
+    }
+    return dates;
+}
+
+private List<MonthOfYear> GetMonths()
+{
+    Months.Add(new MonthOfYear { id = "1", value = "Ianuarie" });
+    Months.Add(new MonthOfYear { id = "2", value = "Februarie" });
+    Months.Add(new MonthOfYear { id = "3", value = "Martie" });
+    Months.Add(new MonthOfYear { id = "4", value = "Aprilie" });
+    Months.Add(new MonthOfYear { id = "5", value = "Mai" });
+    Months.Add(new MonthOfYear { id = "6", value = "Iunie" });
+    Months.Add(new MonthOfYear { id = "7", value = "Iulie" });
+    Months.Add(new MonthOfYear { id = "8", value = "August" });
+    Months.Add(new MonthOfYear { id = "9", value = "Septembrie" });
+    Months.Add(new MonthOfYear { id = "10", value = "Octombrie" });
+    Months.Add(new MonthOfYear { id = "11", value = "Noiembrie" });
+    Months.Add(new MonthOfYear { id = "12", value = "Decembrie" });
+
+    return Months;
+}
+
+private async Task<GetWorkdayTypeResponse> GetWorkdayTypeAsync()
+{
+    await _authInterceptor.Redirect();
+
+    try
+    {
+        GetWorkdayTypeResponse res = new GetWorkdayTypeResponse();
+        res = await _httpCExt.GetAsync<GetWorkdayTypeResponse>("new/api/user/clockIn/workdayType");
+
+        if (res.statusCode == 200)
+        {
+
+            foreach (var item in res.data)
+            {
+                _wd_typeModel.Add(item);
+            }
+
+            return res;
+        }
+
+        else
+        {
+            return res;
+        }
+    }
+
+    catch(Exception e)
+    {
+        Console.WriteLine(e.Message);
+        return null;
+    }
+}
+
+private async Task<GetWorkdaysResponse> GetWorkdaysAsync()
+{
+    await _authInterceptor.Redirect();
+
+    try
+    {
+        GetWorkdaysResponse res = new GetWorkdaysResponse();
+        res = await _httpCExt.GetAsync<GetWorkdaysResponse>("new/api/user/workdays");
+
+        if (res.statusCode == 200)
+        {
+            foreach (var item in res.data.ToList())
+            {
+                _workdays.Add(item);
+            }
+            return res;
+        }
+
+        else
+        {
+            return res;
+        }
+    }
+
+    catch(Exception e)
+    {
+        Console.WriteLine(e.Message);
+        return null;
+    }
+
+}
+
+private async Task<ResponseModel> PostWorkdayAsync(EditContext formContext, ClockInFixTSignatureModel body, int day)
+{
+    await _authInterceptor.Redirect();
+
+    try
+    {
+        ResponseModel res = new ResponseModel();
+
+        int startHour = sendStartDate.Hour;
+
+        int? endYear = body.endDate?.Year;
+        int? endMonth = body.endDate?.Month;
+        int endDay = day;
+        int endHour = sendEndDate.Hour;
+        int endMinute = sendEndDate.Minute;
+        int endSecond = sendEndDate.Second;
+
+        DateTime? endDate = body.endDate;
+
+        if (startHour > endHour)
+        {
+            endDay = endDay + 1;
+            body.endDate = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), endDay, endHour, endMinute, endSecond);
+        }
+
+        body.startDate = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), day, sendStartDate.Hour, sendStartDate.Minute, sendStartDate.Second);
+        body.endDate = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), endDay, sendEndDate.Hour, sendEndDate.Minute, sendEndDate.Second);
+
+        var invalidStartTime = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), day, 0, 0, 0);
+        var invalidEndTime = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), endDay, 0, 0, 0);
+
+        if (body.fullDay == true && (body.startDate != invalidStartTime || body.endDate != invalidEndTime) && formContext.Validate())
+        {
+            res = await _httpCExt.PostAsync<ResponseModel>("new/api/user/clockIn/fixTSignature", body);
+        }
+
+        else if (body.fullDay == false && (body.startDate != invalidStartTime && body.endDate != invalidEndTime) && formContext.Validate())
+        {
+            res = await _httpCExt.PostAsync<ResponseModel>("new/api/user/clockIn/fixTSignature", body);
+        }
+
+        else if (formContext.Validate() == false)
+        {
+            foreach (var message in formContext.GetValidationMessages())
+            {
+                _toastService.ShowError(message + ".", "Eroare");
+            }
+        }
+
+        else
+        {
+            _toastService.ShowError("Campul orei de intrare sau iesire a fost omis", "Eroare");
+        }
+
+        if (res.statusCode == 200)
+        {
+            _toastService.ShowSuccess("Modificarea s-a efectuat cu succes.", "Succes");
+            return res;
+        }
+
+        else
+        {
+            return res;
+        }
+    }
+
+    catch(Exception e)
+    {
+        Console.WriteLine(e.Message);
+        return null;
+    }
+
+}
+
+private async Task<ResponseModel> UpdateWorkdayAsync(EditContext formContext, ClockInFixTSignatureModel body, int day, int id)
+{
+    await _authInterceptor.Redirect();
+
+    try
+    {
+        ResponseModel res = new ResponseModel();
+
+        int startHour = sendStartDate.Hour;
+
+        int? endYear = body.endDate?.Year;
+        int? endMonth = body.endDate?.Month;
+        int endDay = day;
+        int endHour = sendEndDate.Hour;
+        int endMinute = sendEndDate.Minute;
+        int endSecond = sendEndDate.Second;
+
+        DateTime? endDate = body.endDate;
+
+        if (startHour > endHour)
+        {
+            endDay = endDay + 1;
+            body.endDate = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), endDay, endHour, endMinute, endSecond);
+        }
+
+        body.startDate = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), day, sendStartDate.Hour, sendStartDate.Minute, sendStartDate.Second);
+        body.endDate = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), endDay, sendEndDate.Hour, sendEndDate.Minute, sendEndDate.Second);
+
+        var invalidStartTime = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), day, 0, 0, 0);
+        var invalidEndTime = new DateTime(DateTime.Now.Year, Convert.ToInt32(_monthOfYear.id), endDay, 0, 0, 0);
+
+        if (body.fullDay == true && body.startDate != invalidStartTime && formContext.Validate() == true)
+        {
+            res = await _httpCExt.PutAsync<ResponseModel>(@$"new/api/user/update/wid={id}", body);
+        }
+
+        if (body.fullDay == false && body.startDate != invalidStartTime && formContext.Validate() == true)
+        {
+            res = await _httpCExt.PutAsync<ResponseModel>(@$"new/api/user/update/wid={id}", body);
+        }
+
+        if (formContext.Validate() == false)
+        {
+            foreach (var message in formContext.GetValidationMessages())
+            {
+                _toastService.ShowError(message + ".", "Eroare");
+            }
+        }
+
+        if (res.statusCode == 200)
+        {
+            _toastService.ShowSuccess("Modificarea s-a efectuat cu succes.", "Succes");
+            return res;
+        }
+
+        else
+        {
+            return res;
+        }
+    }
+
+    catch(Exception e)
+    {
+        Console.WriteLine(e.Message);
+        return null;
+    }
+
+}
+
+private async Task<ResponseModel> DeleteWorkdayAsync(EditContext formContext, DeleteFixTSignatureModel body, int id)
+{
+    await _authInterceptor.Redirect();
+
+    try
+    {
+        ResponseModel res = new ResponseModel();
+
+        if (formContext.Validate())
+        {
+            res = await _httpCExt.DeleteAsync<ResponseModel>(@$"new/api/user/delete/wid={id}", body);
+        }
+
+        else
+        {
+            foreach (var messages in formContext.GetValidationMessages())
+            {
+                _toastService.ShowError("Modificarea nu s-a putut efectua", "Eroare");
+            }
+        }
+
+        if (res.statusCode == 200)
+        {
+            _toastService.ShowSuccess("Modificarea s-a efectuat cu succes.", "Succes");
+            return res;
+        }
+
+        else
+        {
+            return res;
+        }
+    }
+
+    catch(Exception e)
+    {
+        Console.WriteLine(e.Message);
+        return null;
+    }
+
+
+}
+
+private static List<CalendarTableRow> CalendarTable(string monthNo, List<WorkdayModel> workdays)
+{
+    List<CalendarTableRow> calendar = new List<CalendarTableRow>();
+    List<CalendarTableRow> calendarTable = new List<CalendarTableRow>();
+
+    List<DateTime> calendarDates = GetDates(DateTime.Now.Year, Convert.ToInt32(monthNo));
+
+    CultureInfo calendarCulture = new CultureInfo("ro-RO");
+
+    int rowIndex;
+
+    foreach (DateTime date in calendarDates)
+    {
+        calendar.Add(new CalendarTableRow
+        {
+            DayNo = date.Day,
+            DayName = calendarCulture.DateTimeFormat.GetDayName(date.DayOfWeek),
+            Date = date,
+            ClockedIn = false
+
+        });
+    }
+
+    foreach (DateTime date in calendarDates)
+    {
+        calendarTable.Add(new CalendarTableRow
+        {
+            DayNo = date.Day,
+            DayName = calendarCulture.DateTimeFormat.GetDayName(date.DayOfWeek),
+            Date = date,
+            ClockedIn = false
+
+        });
+    }
+
+    foreach (CalendarTableRow calendarRow in calendar)
+    {
+        foreach (WorkdayModel workday in workdays)
+        {
+            if (calendarRow.Date == workday.startDate.Date)
+            {
+
+                rowIndex = calendar.Select((r, i) => new
+                {
+                    Row = r,
+                    Index = i
+                }).FirstOrDefault(row => row.Index == calendarRow.DayNo - 1).Index;
+
+                calendarTable[rowIndex] = new CalendarTableRow
+                {
+                    DayNo = calendarRow.DayNo,
+                    DayName = calendarRow.DayName,
+                    Date = calendarRow.Date,
+                    Id = workday.id,
+                    ClockedIn = true,
+                    ClockedInStartDate = workday.startDate,
+                    ClockedInEndDate = workday.endDate,
+                    AmountOfMinutes = workday.aom,
+                    WorkdayType = workday.typeCode
+                };
+            }
+        }
+    }
+    return calendarTable;
+}
+
+}

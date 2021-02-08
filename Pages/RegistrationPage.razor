@@ -1,0 +1,95 @@
+@page "/registerUser"
+
+@inject IHttpClientFactory _http
+@inject IMemoryCache _cache
+@inject NavigationManager _navigationManager
+@inject IToastService _toaster
+@inject IAuthorizationHandlerService _authInterceptor
+
+@using Client.Models
+
+@attribute [Authorize(Policy = "AdminRolePolicy")]
+
+<div>
+    <EditForm Model="@_registrationForm" Context="registrationContext">
+        <DataAnnotationsValidator />
+        <input type="text" class="form-control" placeholder="Prenume" @bind="_registrationForm.firstName">
+        <input type="text" class="form-control" placeholder="Nume" @bind="_registrationForm.lastName">
+        <input type="text" class="form-control" placeholder="Nume Utilizator" @bind="_registrationForm.userName">
+        <select class="form-control" @bind="_registrationForm.role">
+            <option value="" disabled>Select</option>
+            <option value="admin">Administrator</option>
+            <option value="ordinary">Utilizator</option>
+        </select>
+        <input type="password" class="form-control" placeholder="Parola" @bind="_registrationForm.password">
+        <button type="submit" class="btn btn-outline-primary" @onclick="@(() => CreateUser(registrationContext))">Adauga Utilizator</button>
+    </EditForm>
+</div>
+
+@code {
+
+    private RegistrationFormRequestModel _registrationForm = new RegistrationFormRequestModel();
+
+    private string _token;
+    private UserModel _claims;
+
+    protected override void OnInitialized()
+    {
+        _token = _cache.Get<string>("token");
+        _claims = _cache.Get<UserModel>("claims");
+    }
+
+    private async Task<RegistrationServerResponseModel> CreateUser(EditContext formContext)
+    {
+        await _authInterceptor.Redirect();
+
+        try
+        {
+            RegistrationServerResponseModel res = new RegistrationServerResponseModel();
+
+            string serializedUser = JsonConvert.SerializeObject(_registrationForm);
+
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, "new/api/register");
+            request.Content = new StringContent(serializedUser);
+            request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+
+            var client = _http.CreateClient("Resources");
+            var response = await client.SendAsync(request);
+            var statusCode = response.StatusCode;
+
+            if (formContext.Validate())
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                res = JsonConvert.DeserializeObject<RegistrationServerResponseModel>(body);
+            }
+
+            else
+            {
+                foreach (var message in formContext.GetValidationMessages())
+                {
+                    _toaster.ShowError(message, "Eroare");
+                }
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                _toaster.ShowSuccess("Un nou utilizator a fost inregistrat.", "Succes");
+            }
+
+            else if (res.statusCode == 409)
+            {
+                _toaster.ShowError("Numele de utilizator a fost deja inregistrat.", "Eroare");
+            }
+
+            return res;
+        }
+
+        catch(Exception e)
+        {
+            Console.WriteLine(e.Message);
+            return null;
+        }
+
+    }
+}

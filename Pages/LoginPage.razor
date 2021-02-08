@@ -1,0 +1,99 @@
+@page "/login"
+@layout GuestLayout
+
+@inject IHttpClientFactory _http
+@inject IMemoryCache _cache
+@inject NavigationManager _navigationManager
+@inject AuthenticationStateProvider _authStateProvider
+@inject IServiceProvider _serviceProvider
+@inject IToastService _toaster
+
+@using Client.Models
+@using Client.Services
+
+<div>
+    <EditForm Model="@_loginForm" Context="loginContext">
+        <DataAnnotationsValidator />
+        <input type="text" class="form-control" placeholder="Nume Utilizator" @bind="_loginForm.userName">
+        <input type="password" class="form-control" placeholder="Parola" @bind="_loginForm.password">
+        <button type="submit" class="btn btn-primary" @onclick="@(() => ValidateUser(loginContext))">Login</button>
+    </EditForm>
+</div>
+
+@code {
+
+    private LoginFormRequestModel _loginForm = new LoginFormRequestModel();
+    private UserModel _user = new UserModel();
+    private string _cashedToken;
+
+    private async Task<LoginServerResponseModel> ValidateUser(EditContext formContext)
+    {
+        LoginServerResponseModel res = new LoginServerResponseModel();
+        string serializedUser = JsonConvert.SerializeObject(_loginForm);
+
+        HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, "new/api/login");
+        request.Content = new StringContent(serializedUser);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+        var client = _http.CreateClient("Resources");
+        var response = await client.SendAsync(request);
+        var statusCode = response.StatusCode;
+
+
+        if (formContext.Validate())
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            res = JsonConvert.DeserializeObject<LoginServerResponseModel>(body);
+        }
+
+        else
+        {
+            foreach(var message in formContext.GetValidationMessages())
+            {
+                _toaster.ShowError(message, "Eroare");
+            }
+        }
+
+        if(response.IsSuccessStatusCode)
+        {
+            _cache.Set("token", res.token, DateTimeOffset.Now.AddMinutes(30));
+            _cashedToken = _cache.Get<string>("token");
+
+            if(String.IsNullOrEmpty(_cashedToken) || String.IsNullOrWhiteSpace(_cashedToken))
+            {
+                _toaster.ShowError("Cheia pentru autentificare este invalida.", "Eroare");
+            }
+
+            else
+            {
+                await this.Authenticate(_cashedToken);
+                _navigationManager.NavigateTo("/homepage");
+            }
+        }
+
+        else if (res.statusCode == 401 || res.statusCode == 403 || res.statusCode == 404)
+        {
+            _toaster.ShowError("Nume de utilizator sau parola incorecta.", "Eroare");
+        }
+
+        return res;
+    }
+
+    public async Task<AuthenticationServerResponseModel> Authenticate(String token)
+    {
+        AuthenticationServerResponseModel res = new AuthenticationServerResponseModel();
+        var request = new HttpRequestMessage(HttpMethod.Get, "new/api/user");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var client = _http.CreateClient("Resources");
+        var httpResponse = await client.SendAsync(request);
+
+        res = await httpResponse.Content.ReadFromJsonAsync<AuthenticationServerResponseModel>();
+
+        Console.WriteLine(res.data[0]);
+
+        await ((CustomAuthStateProvider)_authStateProvider).GetAuthenticationStateAsync();
+        ((CustomAuthStateProvider)_authStateProvider).MarkUserAsAuthenticated(res.data[0]);
+        return null;
+    }
+}

@@ -1,0 +1,21 @@
+@using Microsoft.Extensions.Caching.Memory
+
+@inject IMemoryCache _cache
+
+@using Client.Models
+
+
+<a href="/login" @onclick="@LogOutAsync" target="_self">Log Out</a>
+
+@code{
+
+    protected UserModel Claims = new UserModel();
+
+    protected void LogOutAsync()
+    {
+        _cache.Remove("token");
+        _cache.Remove("claims");
+        return; 
+    }
+
+}
